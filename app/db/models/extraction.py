@@ -1,13 +1,11 @@
 """One call to an extraction engine for one page -- success or failure."""
 
 import uuid
-from datetime import date
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
     CheckConstraint,
-    Date,
     ForeignKey,
     Index,
     Integer,
@@ -48,19 +46,19 @@ class Extraction(Base, TimestampMixin):
 
     status: Mapped[str] = mapped_column(String(16), nullable=False)
 
-    # Full vendor response, kept even on failure. The receipt API returns
-    # `options` (confidences, positions, amount_detail, ...) only for contracts
-    # that enable them, so the payload cannot be fully normalised -- and this
-    # is the only thing that makes a later re-analysis possible without paying
-    # for the OCR again.
+    # The extracted result, verbatim, and the only place it lives. Kept even
+    # on failure.
+    #
+    # No field is promoted to its own column on purpose: what a receipt
+    # yields is not knowable in advance. The API returns `options`
+    # (confidences, positions, amount_detail, ...) only for contracts that
+    # enable them, and a different engine would return a different shape
+    # entirely. Columns would have to be guessed now and migrated later.
+    #
+    # The cost: filtering or sorting on a field means an expression over
+    # JSONB, e.g. (raw_response->>'amount')::numeric, and an index to match
+    # if it ever gets hot. Nothing queries these values today.
     raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-
-    # The four fields the receipt API returns at every version, promoted to
-    # columns so the history screen can list and filter without parsing JSON.
-    receipt_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
-    tel: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    issuer: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # The API signals failure in the body (HTTP 400 + {"result":"FAILED"}),
     # so the vendor error code is worth its own column.

@@ -1,0 +1,137 @@
+:root {
+  --ink: #1c1f23;
+  --muted: #6b7280;
+  --line: #e2e5ea;
+  --bg: #fbfbfc;
+  --card: #fff;
+  --ok: #0f7b41;
+  --bad: #b3261e;
+  --warn: #8a6100;
+  --accent: #1a4fa0;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+}
+
+.brand { font-weight: 600; color: var(--ink); text-decoration: none; }
+
+main { max-width: 900px; margin: 0 auto; padding: 24px; }
+
+h2 { font-size: 18px; margin: 28px 0 12px; }
+h3 { font-size: 15px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+
+a { color: var(--accent); }
+.muted { color: var(--muted); text-decoration: none; }
+.bad { color: var(--bad); }
+.empty { color: var(--muted); padding: 20px 0; }
+.hint { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
+
+/* --- upload ------------------------------------------------------------ */
+.upload {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+}
+.upload label { font-weight: 600; display: block; margin-bottom: 10px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font: inherit;
+  cursor: pointer;
+}
+button:disabled { background: var(--muted); cursor: not-allowed; }
+button.link {
+  background: none;
+  color: var(--accent);
+  padding: 0;
+  font-size: 13px;
+  text-decoration: underline;
+}
+button.link:disabled { color: var(--muted); }
+
+/* --- banners ----------------------------------------------------------- */
+.banner { border-radius: 6px; padding: 10px 14px; margin: 0 0 16px; font-size: 14px; }
+.notice { background: #eef4ff; color: var(--accent); }
+.error  { background: #fdeceb; color: var(--bad); }
+
+/* --- table ------------------------------------------------------------- */
+table { width: 100%; border-collapse: collapse; background: var(--card); }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+td.num { font-variant-numeric: tabular-nums; }
+
+/* --- status pills ------------------------------------------------------ */
+.pill {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef0f3;
+  color: var(--muted);
+}
+.pill.completed, .pill.succeeded { background: #e6f4ec; color: var(--ok); }
+.pill.failed { background: #fdeceb; color: var(--bad); }
+.pill.partial_failed { background: #fdf3e0; color: var(--warn); }
+.pill.pending, .pill.processing, .pill.converting, .pill.extracting {
+  background: #eef4ff; color: var(--accent);
+}
+
+/* --- page cards -------------------------------------------------------- */
+.meta { color: var(--muted); font-size: 13px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+.page {
+  display: flex;
+  gap: 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.page-image { flex: 0 0 160px; }
+.page-image img { width: 100%; border: 1px solid var(--line); border-radius: 4px; display: block; }
+.no-image {
+  height: 120px; display: grid; place-items: center;
+  border: 1px dashed var(--line); border-radius: 4px; color: var(--muted); font-size: 12px;
+}
+.page-body { flex: 1; min-width: 0; }
+
+.fields { display: grid; grid-template-columns: 90px 1fr; gap: 4px 12px; margin: 0 0 10px; }
+.fields dt { color: var(--muted); font-size: 13px; }
+.fields dd { margin: 0; font-variant-numeric: tabular-nums; }
+.confidence {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  background: #eef0f3;
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-variant-numeric: tabular-nums;
+}
+.confidence.low { background: #fdf3e0; color: var(--warn); font-weight: 600; }
+
+@media (max-width: 620px) {
+  .page { flex-direction: column; }
+  .page-image { flex: none; max-width: 200px; }
+}

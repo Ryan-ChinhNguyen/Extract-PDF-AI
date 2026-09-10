@@ -18,10 +18,11 @@ CREATE TABLE documents (
     size_bytes INTEGER NOT NULL, 
     page_count INTEGER, 
     status VARCHAR(32) NOT NULL, 
-    convert_lid VARCHAR(128), 
     error_message TEXT, 
+    source_path TEXT, 
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
     expired_at TIMESTAMP WITH TIME ZONE, 
+    claimed_at TIMESTAMP WITH TIME ZONE, 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
     CONSTRAINT pk_documents PRIMARY KEY (id), 
@@ -31,22 +32,6 @@ CREATE TABLE documents (
 CREATE UNIQUE INDEX uq_documents_content_hash_live ON documents (content_hash) WHERE expired_at IS NULL;
 
 CREATE INDEX ix_documents_created_at ON documents (created_at DESC);
-
-CREATE TABLE pages (
-    id UUID NOT NULL, 
-    document_id UUID NOT NULL, 
-    page_no INTEGER NOT NULL, 
-    image_path TEXT, 
-    image_bytes INTEGER, 
-    status VARCHAR(32) NOT NULL, 
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-    CONSTRAINT pk_pages PRIMARY KEY (id), 
-    CONSTRAINT ck_pages_page_no_positive CHECK (page_no >= 1), 
-    CONSTRAINT ck_pages_status_valid CHECK (status IN ('pending','processing','succeeded','failed')), 
-    CONSTRAINT fk_pages_document_id_documents FOREIGN KEY(document_id) REFERENCES documents (id) ON DELETE CASCADE, 
-    CONSTRAINT uq_pages_document_id_page_no UNIQUE (document_id, page_no)
-);
 
 CREATE TABLE extraction_engines (
     key VARCHAR(64) NOT NULL, 
@@ -64,6 +49,24 @@ CREATE TABLE extraction_engines (
     CONSTRAINT ck_extraction_engines_unit_valid CHECK (unit IN ('page','request','1k_tokens'))
 );
 
+CREATE TABLE pages (
+    id UUID NOT NULL, 
+    document_id UUID NOT NULL, 
+    page_no INTEGER NOT NULL, 
+    image_path TEXT, 
+    status VARCHAR(32) NOT NULL, 
+    requested_engine_key VARCHAR(64), 
+    claimed_at TIMESTAMP WITH TIME ZONE, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    CONSTRAINT pk_pages PRIMARY KEY (id), 
+    CONSTRAINT ck_pages_page_no_positive CHECK (page_no >= 1), 
+    CONSTRAINT ck_pages_status_valid CHECK (status IN ('pending','processing','succeeded','failed')), 
+    CONSTRAINT fk_pages_document_id_documents FOREIGN KEY(document_id) REFERENCES documents (id) ON DELETE CASCADE, 
+    CONSTRAINT fk_pages_requested_engine_key_extraction_engines FOREIGN KEY(requested_engine_key) REFERENCES extraction_engines (key) ON DELETE RESTRICT, 
+    CONSTRAINT uq_pages_document_id_page_no UNIQUE (document_id, page_no)
+);
+
 CREATE TABLE extractions (
     id UUID NOT NULL, 
     page_id UUID NOT NULL, 
@@ -71,10 +74,6 @@ CREATE TABLE extractions (
     attempt_no INTEGER NOT NULL, 
     status VARCHAR(16) NOT NULL, 
     raw_response JSONB, 
-    receipt_date DATE, 
-    amount NUMERIC(14, 2), 
-    tel VARCHAR(32), 
-    issuer TEXT, 
     error_code INTEGER, 
     error_message TEXT, 
     latency_ms INTEGER, 

@@ -22,21 +22,24 @@ class Document(Base, TimestampMixin):
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default=DocumentStatus.PENDING
-    )
-    # Logging id returned by convert_to_jpg, kept to trace a run back to the
-    # vendor's own logs when a support question comes up.
-    convert_lid: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default=DocumentStatus.PENDING)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Where the uploaded PDF was stored, relative to STORAGE_DIR. Kept so the
+    # background pipeline can read the file after the upload request is gone,
+    # and so a retry never needs the user to hand us the bytes again.
+    source_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Retention window. `expires_at` is the policy (created_at + TTL);
     # `expired_at` records the moment the hash was actually released. They are
     # separate because nothing sweeps expired rows yet -- see docs/DESIGN_NOTES.
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    expired_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Set when a worker takes this row. A claim older than
+    # WORKER_CLAIM_TIMEOUT_SECONDS is treated as abandoned and reset, so a
+    # worker that dies mid-call does not strand the row forever.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     pages: Mapped[list["Page"]] = relationship(  # noqa: F821
         back_populates="document",
@@ -46,8 +49,7 @@ class Document(Base, TimestampMixin):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending','converting','extracting','completed',"
-            "'partial_failed','failed')",
+            "status IN ('pending','converting','extracting','completed','partial_failed','failed')",
             name="status_valid",
         ),
         # A file may occupy the "live" slot for its hash only once. Partial

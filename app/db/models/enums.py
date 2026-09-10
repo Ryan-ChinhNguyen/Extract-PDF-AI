@@ -12,9 +12,9 @@ class DocumentStatus(StrEnum):
     PENDING = "pending"
     CONVERTING = "converting"
     EXTRACTING = "extracting"
-    COMPLETED = "completed"          # every page succeeded
+    COMPLETED = "completed"  # every page succeeded
     PARTIAL_FAILED = "partial_failed"  # some pages succeeded, some failed
-    FAILED = "failed"                # conversion failed, or every page failed
+    FAILED = "failed"  # conversion failed, or every page failed
 
 
 class PageStatus(StrEnum):

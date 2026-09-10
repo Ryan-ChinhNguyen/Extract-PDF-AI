@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% set d = document %}
+
+{% block title %}{{ d.original_filename }}{% endblock %}
+
+{% block content %}
+<p class="muted"><a href="/">&larr; History</a></p>
+
+<h2>{{ d.original_filename }}</h2>
+<p class="meta">
+  <span class="pill {{ d.status.value }}">{{ d.status.value }}</span>
+  {{ d.pages_succeeded }}/{{ d.page_count or 0 }} pages OCR'd
+  {% if d.pages_failed %}<span class="bad">&middot; {{ d.pages_failed }} failed</span>{% endif %}
+  &middot; uploaded {{ d.created_at.strftime('%Y-%m-%d %H:%M') }}
+  &middot; retained until {{ d.expires_at.strftime('%Y-%m-%d') }}
+</p>
+
+{% if d.error_message %}
+  <p class="banner error">{{ d.error_message }}</p>
+{% endif %}
+
+{% if d.pages_failed or (d.status.value == 'failed' and not d.pages) %}
+  <form action="/documents/{{ d.id }}/retry" method="post">
+    <button type="submit" {% if d.is_expired %}disabled{% endif %}>
+      {% if d.pages %}Re-run the failed pages{% else %}Re-run the conversion{% endif %}
+    </button>
+    {% if d.is_expired %}
+      <span class="hint">Past its retention window &mdash; upload the file again.</span>
+    {% endif %}
+  </form>
+{% endif %}
+
+{% if not d.pages %}
+  <p class="empty">No pages yet. The PDF has not been converted.</p>
+{% endif %}
+
+{% for p in d.pages %}
+<section class="page">
+  <div class="page-image">
+    {% if p.image_url %}
+      <a href="{{ p.image_url }}" target="_blank"><img src="{{ p.image_url }}" alt="Page {{ p.page_no }}"></a>
+    {% else %}
+      <div class="no-image">no image</div>
+    {% endif %}
+  </div>
+
+  <div class="page-body">
+    <h3>Page {{ p.page_no }}
+      <span class="pill {{ p.status.value }}">{{ p.status.value }}</span>
+      {% if p.attempt_count > 1 %}
+        <span class="muted">{{ p.attempt_count }} attempts</span>
+      {% endif %}
+    </h3>
+
+    {% set e = p.latest_extraction %}
+    {% if not e %}
+      <p class="muted">Not processed yet.</p>
+    {% elif e.status.value == 'failed' %}
+      <p class="banner error">
+        {{ e.error_message }}
+        {% if e.error_code %}<span class="muted">(code {{ e.error_code }})</span>{% endif %}
+      </p>
+    {% else %}
+      {# Rendered from whatever the engine returned, not from a fixed set of
+         columns -- an engine with a different shape still displays. #}
+      {% if e.fields %}
+      <dl class="fields">
+        {% for f in e.fields %}
+        <dt>{{ f.name|replace('_', ' ')|capitalize }}</dt>
+        <dd>
+          {%- if f.value is none %}&mdash;
+          {%- elif f.value is number %}{{ '{:,}'.format(f.value) }}
+          {%- else %}{{ f.value }}{% endif -%}
+          {#- A field the engine did not find carries no score, so nothing is
+              shown rather than a misleading 0%. -#}
+          {%- if f.confidence %}
+          {%- set low = f.confidence < low_confidence %}
+          <span class="confidence{% if low %} low{% endif %}"
+                title="The engine scored this {{ (f.confidence * 100)|round|int }}%{% if low %}, below the {{ (low_confidence * 100)|round|int }}% threshold — worth checking against the image{% endif %}">
+            {{ (f.confidence * 100)|round|int }}%
+          </span>
+          {%- endif -%}
+        </dd>
+        {% endfor %}
+      </dl>
+      {% else %}
+        <p class="muted">The engine returned no recognised fields.</p>
+      {% endif %}
+    {% endif %}
+
+    {# Engine, attempt number, latency and timestamp are recorded on every
+       attempt and served by the attempt-history endpoint. They are operator
+       detail, not something the reader of a receipt needs on screen. #}
+
+    <form action="/documents/{{ d.id }}/retry" method="post">
+      <input type="hidden" name="page_no" value="{{ p.page_no }}">
+      <button type="submit" class="link" {% if d.is_expired %}disabled{% endif %}>Re-run this page</button>
+    </form>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}
