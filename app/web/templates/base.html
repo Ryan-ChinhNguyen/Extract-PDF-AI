@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PDF Receipt Extraction{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">PDF Receipt Extraction</a>
+    <a class="muted" href="/docs">API docs</a>
+  </header>
+
+  <main>
+    {% if notice %}<p class="banner notice">{{ notice }}</p>{% endif %}
+    {% if error %}<p class="banner error">{{ error }}</p>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  {% if in_progress %}
+  <script>
+    // Work runs in a background worker, so the page reloads while anything is
+    // still moving. It stops on its own once every document reaches a terminal
+    // status, because the server stops setting this flag.
+    setTimeout(function () { window.location.reload(); }, 3000);
+  </script>
+  {% endif %}
+</body>
+</html>

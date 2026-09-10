@@ -32,6 +32,23 @@ class Settings(BaseSettings):
     # content hash is released so the same file can be uploaded again.
     document_ttl_days: int = Field(default=7, ge=1)
 
+    # --- OCR presentation -----------------------------------------------
+    # Below this score a field is flagged for a human to check. The engine
+    # reports 0-1; this is a display threshold only -- nothing is rejected,
+    # retried or hidden because of it, and the stored value is untouched.
+    ocr_low_confidence_threshold: float = Field(default=0.80, ge=0, le=1)
+
+    # --- Background worker ----------------------------------------------
+    # The pipeline runs out of band: endpoints only move rows to `pending`
+    # and this worker picks them up, so a restart resumes instead of losing
+    # the job.
+    worker_enabled: bool = True
+    worker_poll_interval_seconds: float = Field(default=2.0, gt=0)
+    worker_batch_size: int = Field(default=5, ge=1)
+    # A row claimed longer ago than this is assumed to belong to a worker
+    # that died, and is released back to `pending`.
+    worker_claim_timeout_seconds: int = Field(default=300, ge=30)
+
     # --- Storage --------------------------------------------------------
     storage_dir: Path = Path("storage")
 

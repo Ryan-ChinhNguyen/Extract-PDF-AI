@@ -52,3 +52,34 @@ class DocumentExpired(AppError):
 class UnsupportedFileType(AppError):
     status_code = 415
     code = "unsupported_file_type"
+
+
+class EngineNotFound(AppError):
+    """A retry asked for an engine that is not in the registry."""
+
+    status_code = 404
+    code = "engine_not_found"
+
+
+class PageBusy(AppError):
+    """A re-run was asked for a page a worker is currently running.
+
+    Silently resetting it would be worse than refusing: the in-flight attempt
+    would finish and overwrite the status, and the request would vanish without
+    a trace.
+    """
+
+    status_code = 409
+    code = "page_busy"
+
+
+class NoEngineAvailable(AppError):
+    """No engine is registered, so nothing can process a page.
+
+    A configuration problem, not a property of the page -- raised rather than
+    recorded as a failed attempt, so the page returns to the queue instead of
+    burning an attempt on a fault it did not cause.
+    """
+
+    status_code = 503
+    code = "no_engine_available"

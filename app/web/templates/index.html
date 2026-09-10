@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form class="upload" action="/upload" method="post" enctype="multipart/form-data">
+  <label for="file">Upload a PDF</label>
+  <div class="row">
+    <input type="file" id="file" name="file" accept="application/pdf" required>
+    <button type="submit">Upload</button>
+  </div>
+  <p class="hint">
+    Each page is OCR'd separately. A file that is already uploaded and still retained
+    cannot be uploaded again &mdash; open it below and re-run it there.
+  </p>
+</form>
+
+<h2>History <span class="muted">({{ total }})</span></h2>
+
+{% if not documents %}
+  <p class="empty">Nothing uploaded yet.</p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>File</th><th>Status</th><th>Pages</th><th>Uploaded</th><th>Retained until</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in documents %}
+    <tr>
+      <td><a href="/documents/{{ d.id }}">{{ d.original_filename }}</a></td>
+      <td><span class="pill {{ d.status.value }}">{{ d.status.value }}</span></td>
+      <td class="num">
+        {% if d.page_count %}
+          {{ d.pages_succeeded }}/{{ d.page_count }}
+          {% if d.pages_failed %}<span class="bad">({{ d.pages_failed }} failed)</span>{% endif %}
+        {% else %}&mdash;{% endif %}
+      </td>
+      <td class="muted">{{ d.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td class="muted">
+        {{ d.expires_at.strftime('%Y-%m-%d') }}
+        {% if d.is_expired %}<span class="bad">expired</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

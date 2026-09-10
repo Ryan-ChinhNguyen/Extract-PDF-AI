@@ -46,6 +46,4 @@ class ExtractionEngine(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    __table_args__ = (
-        CheckConstraint("unit IN ('page','request','1k_tokens')", name="unit_valid"),
-    )
+    __table_args__ = (CheckConstraint("unit IN ('page','request','1k_tokens')", name="unit_valid"),)

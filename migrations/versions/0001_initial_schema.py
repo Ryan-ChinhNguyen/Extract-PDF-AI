@@ -26,10 +26,11 @@ def upgrade() -> None:
         sa.Column("size_bytes", sa.Integer(), nullable=False),
         sa.Column("page_count", sa.Integer(), nullable=True),
         sa.Column("status", sa.String(length=32), nullable=False),
-        sa.Column("convert_lid", sa.String(length=128), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
+        sa.Column("source_path", sa.Text(), nullable=True),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("expired_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("claimed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -43,8 +44,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint(
-            "status IN ('pending','converting','extracting','completed',"
-            "'partial_failed','failed')",
+            "status IN ('pending','converting','extracting','completed','partial_failed','failed')",
             name="status_valid",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_documents"),
@@ -65,43 +65,6 @@ def upgrade() -> None:
         "documents",
         [sa.text("created_at DESC")],
         unique=False,
-    )
-
-    op.create_table(
-        "pages",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("page_no", sa.Integer(), nullable=False),
-        sa.Column("image_path", sa.Text(), nullable=True),
-        sa.Column("image_bytes", sa.Integer(), nullable=True),
-        sa.Column("status", sa.String(length=32), nullable=False),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-        sa.CheckConstraint("page_no >= 1", name="page_no_positive"),
-        sa.CheckConstraint(
-            "status IN ('pending','processing','succeeded','failed')",
-            name="status_valid",
-        ),
-        sa.ForeignKeyConstraint(
-            ["document_id"],
-            ["documents.id"],
-            name="fk_pages_document_id_documents",
-            ondelete="CASCADE",
-        ),
-        sa.PrimaryKeyConstraint("id", name="pk_pages"),
-        sa.UniqueConstraint(
-            "document_id", "page_no", name="uq_pages_document_id_page_no"
-        ),
     )
 
     op.create_table(
@@ -130,6 +93,48 @@ def upgrade() -> None:
     )
 
     op.create_table(
+        "pages",
+        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("page_no", sa.Integer(), nullable=False),
+        sa.Column("image_path", sa.Text(), nullable=True),
+        sa.Column("status", sa.String(length=32), nullable=False),
+        sa.Column("requested_engine_key", sa.String(length=64), nullable=True),
+        sa.Column("claimed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.CheckConstraint("page_no >= 1", name="page_no_positive"),
+        sa.CheckConstraint(
+            "status IN ('pending','processing','succeeded','failed')",
+            name="status_valid",
+        ),
+        sa.ForeignKeyConstraint(
+            ["document_id"],
+            ["documents.id"],
+            name="fk_pages_document_id_documents",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["requested_engine_key"],
+            ["extraction_engines.key"],
+            name="fk_pages_requested_engine_key_extraction_engines",
+            ondelete="RESTRICT",
+        ),
+        sa.PrimaryKeyConstraint("id", name="pk_pages"),
+        sa.UniqueConstraint("document_id", "page_no", name="uq_pages_document_id_page_no"),
+    )
+
+    op.create_table(
         "extractions",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("page_id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -137,18 +142,12 @@ def upgrade() -> None:
         sa.Column("attempt_no", sa.Integer(), nullable=False),
         sa.Column("status", sa.String(length=16), nullable=False),
         sa.Column("raw_response", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("receipt_date", sa.Date(), nullable=True),
-        sa.Column("amount", sa.Numeric(precision=14, scale=2), nullable=True),
-        sa.Column("tel", sa.String(length=32), nullable=True),
-        sa.Column("issuer", sa.Text(), nullable=True),
         sa.Column("error_code", sa.Integer(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("latency_ms", sa.Integer(), nullable=True),
         sa.Column("usage_qty", sa.Numeric(precision=12, scale=4), nullable=True),
         sa.Column("engine_version", sa.String(length=32), nullable=True),
-        sa.Column(
-            "unit_cost_snapshot", sa.Numeric(precision=12, scale=6), nullable=True
-        ),
+        sa.Column("unit_cost_snapshot", sa.Numeric(precision=12, scale=6), nullable=True),
         sa.Column("currency", sa.String(length=3), nullable=True),
         sa.Column("cost_amount", sa.Numeric(precision=14, scale=6), nullable=True),
         sa.Column(
@@ -163,12 +162,8 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=False,
         ),
-        sa.CheckConstraint(
-            "attempt_no >= 1", name="attempt_no_positive"
-        ),
-        sa.CheckConstraint(
-            "status IN ('succeeded','failed')", name="status_valid"
-        ),
+        sa.CheckConstraint("attempt_no >= 1", name="attempt_no_positive"),
+        sa.CheckConstraint("status IN ('succeeded','failed')", name="status_valid"),
         sa.ForeignKeyConstraint(
             ["engine_key"],
             ["extraction_engines.key"],
@@ -215,8 +210,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_extractions_page_id_created_at", table_name="extractions")
     op.drop_table("extractions")
-    op.drop_table("extraction_engines")
+    # pages references extraction_engines, so it goes first.
     op.drop_table("pages")
+    op.drop_table("extraction_engines")
     op.drop_index("ix_documents_created_at", table_name="documents")
     op.drop_index("uq_documents_content_hash_live", table_name="documents")
     op.drop_table("documents")

@@ -1,8 +1,17 @@
 """One page of a PDF: the unit of work the OCR API is called for."""
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,11 +40,22 @@ class Page(Base, TimestampMixin):
     # Path to the converted JPEG. Images live on disk, not in the database --
     # a 3-page scan is already megabytes. NULL once the file is gone.
     image_path: Mapped[str | None] = mapped_column(Text, nullable=True)
-    image_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default=PageStatus.PENDING
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default=PageStatus.PENDING)
+
+    # Which engine the next run should use. Set when a retry asks for a
+    # specific engine; NULL means "whichever engine is active". The pipeline
+    # runs out of band, so the choice has to outlive the request that made it.
+    requested_engine_key: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("extraction_engines.key", ondelete="RESTRICT"),
+        nullable=True,
     )
+
+    # Set when a worker takes this row. A claim older than
+    # WORKER_CLAIM_TIMEOUT_SECONDS is treated as abandoned and reset, so a
+    # worker that dies mid-call does not strand the row forever.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     document: Mapped["Document"] = relationship(back_populates="pages")  # noqa: F821
     extractions: Mapped[list["Extraction"]] = relationship(  # noqa: F821
