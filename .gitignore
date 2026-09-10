@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Uploaded PDFs and converted page images.
+storage/
+
+.env
