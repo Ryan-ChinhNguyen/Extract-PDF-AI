@@ -21,6 +21,7 @@ services:
       db:
         condition: service_healthy
     environment:
+      APP_ENV: dev
       DATABASE_URL: postgresql+asyncpg://pdfx:pdfx@db:5432/pdfx
       FA_API_TOKEN: ${FA_API_TOKEN}
     ports:
