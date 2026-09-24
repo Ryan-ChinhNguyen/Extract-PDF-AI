@@ -11,6 +11,7 @@ browser needs a redirect and a message, not a 409 body.
 
 import uuid
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse
@@ -107,10 +108,12 @@ async def retry(
 
 def _redirect(path: str, *, notice: str | None = None, error: str | None = None):
     query = ""
+    # Messages are free text ("&", "#", spaces), so they must be encoded or
+    # they would cut the query string short.
     if notice:
-        query = f"?notice={notice}"
+        query = "?" + urlencode({"notice": notice})
     elif error:
-        query = f"?error={error}"
+        query = "?" + urlencode({"error": error})
     # 303, so the browser turns the POST into a GET and a refresh does not
     # resubmit the upload.
     return RedirectResponse(url=path + query, status_code=303)

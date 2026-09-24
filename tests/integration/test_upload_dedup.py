@@ -6,12 +6,13 @@ retention window, enforced by the partial unique index
 """
 
 import asyncio
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 
-from app.core.exceptions import DuplicateDocument, UnsupportedFileType
+from app.core.exceptions import DocumentNotFound, DuplicateDocument, UnsupportedFileType
 from app.db.models.document import Document
 from app.services.document_service import DocumentService
 
@@ -106,3 +107,46 @@ async def test_two_simultaneous_uploads_create_one_document(
 async def test_a_non_pdf_never_reaches_the_database(session_factory, settings):
     with pytest.raises(UnsupportedFileType):
         await _upload(session_factory, settings, "it-notes.txt", b"just some text")
+
+
+async def test_losing_the_insert_race_reports_the_winner(
+    session_factory, settings, unique_pdf, created_documents
+):
+    """The branch the index exists for, reached deterministically.
+
+    The pre-insert check is made to see nothing -- as it would for a request
+    that ran before the other one committed -- so the insert itself collides.
+    Racing two uploads with gather() usually resolves at the check instead.
+    """
+    data = unique_pdf()
+    first = await _upload(session_factory, settings, "it-winner.pdf", data)
+    created_documents.append(first.id)
+
+    async with session_factory() as session:
+        service = DocumentService(session, settings)
+        real = service.documents.get_live_by_hash
+        calls = 0
+
+        async def blind_then_real(content_hash):
+            nonlocal calls
+            calls += 1
+            return None if calls == 1 else await real(content_hash)
+
+        service.documents.get_live_by_hash = blind_then_real
+
+        with pytest.raises(DuplicateDocument) as exc_info:
+            await service.upload("it-loser.pdf", data)
+
+    assert exc_info.value.existing_document_id == str(first.id)
+    assert "already being processed" in exc_info.value.message
+    async with session_factory() as session:
+        rows = await session.scalars(
+            select(Document).where(Document.content_hash == first.content_hash)
+        )
+        assert len(list(rows)) == 1  # the loser left nothing behind
+
+
+async def test_a_summary_for_an_unknown_document_is_not_found(session_factory, settings):
+    async with session_factory() as session:
+        with pytest.raises(DocumentNotFound):
+            await DocumentService(session, settings).get_summary(uuid.uuid4())

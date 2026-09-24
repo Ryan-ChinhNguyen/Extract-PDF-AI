@@ -11,10 +11,11 @@ therefore leaves that data alone.
 """
 
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -78,6 +79,72 @@ async def engine_key(session_factory) -> str:
     if key is None:
         pytest.fail("No active engine registered. Run: alembic upgrade head")
     return str(key)
+
+
+@pytest.fixture
+async def api_client(session_factory, settings) -> AsyncIterator[AsyncClient]:
+    """The real application, in-process, on this test's own database engine.
+
+    The app's module-level engine belongs to whichever event loop first used
+    it, so the session and settings dependencies are replaced with ones built
+    from the fixtures above. The lifespan is not run, which keeps the
+    background worker off: tests drive the pipeline themselves.
+    """
+    from app.core.config import get_settings
+    from app.db.session import get_session
+    from app.main import create_app
+
+    async def _session() -> AsyncIterator[AsyncSession]:
+        async with session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    app = create_app()
+    app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_settings] = lambda: settings
+
+    transport = ASGITransport(app=app)
+    # Redirects are asserted on, so they are not followed.
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+
+@pytest.fixture
+def upload_via_api(
+    api_client: AsyncClient, unique_pdf, created_documents
+) -> Callable[..., Awaitable[dict]]:
+    """Upload a fresh PDF through the endpoint and return the response body."""
+
+    async def _upload(data: bytes | None = None, name: str = "it-api.pdf") -> dict:
+        response = await api_client.post(
+            "/api/v1/documents",
+            files={"file": (name, data or unique_pdf(), "application/pdf")},
+        )
+        assert response.status_code == 202, response.text
+        body = response.json()
+        created_documents.append(uuid.UUID(body["id"]))
+        return body
+
+    return _upload
+
+
+@pytest.fixture
+def run_pipeline(session_factory, settings) -> Callable[..., Awaitable[None]]:
+    """Drive the worker until it has nothing left to pick up."""
+    from app.workers.pipeline_worker import PipelineWorker
+    from tests.integration.fakes import factory
+
+    async def _run(client, limit: int = 12) -> None:
+        worker = PipelineWorker(session_factory, settings, factory(client))
+        for _ in range(limit):
+            if not await worker.tick():
+                return
+
+    return _run
 
 
 @pytest.fixture
