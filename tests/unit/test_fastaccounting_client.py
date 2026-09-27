@@ -190,3 +190,109 @@ async def test_convert_still_accepts_bare_base64(settings):
         result = await client.convert_to_jpg(b"%PDF-1.4 ...")
 
     assert result.images[0] == JPEG
+
+
+@respx.mock
+async def test_transport_errors_are_retryable(settings):
+    """A refused connection is the vendor being down, not a bad request."""
+    respx.post(settings.fa_receipt_url).mock(side_effect=httpx.ConnectError("refused"))
+
+    async with FastAccountingClient(settings) as client:
+        with pytest.raises(ReceiptFailed) as exc_info:
+            await client.extract_receipt(JPEG)
+
+    assert exc_info.value.retryable is True
+    assert "Transport error" in exc_info.value.message
+
+
+@respx.mock
+async def test_a_json_error_status_without_a_failed_body_uses_the_status(settings):
+    respx.post(settings.fa_receipt_url).mock(
+        return_value=httpx.Response(502, json={"message": "bad gateway"})
+    )
+
+    async with FastAccountingClient(settings) as client:
+        with pytest.raises(ReceiptFailed) as exc_info:
+            await client.extract_receipt(JPEG)
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.retryable is True
+
+
+@respx.mock
+async def test_a_client_error_status_is_not_retryable(settings):
+    respx.post(settings.fa_receipt_url).mock(
+        return_value=httpx.Response(401, json={"message": "unauthorized"})
+    )
+
+    async with FastAccountingClient(settings) as client:
+        with pytest.raises(ReceiptFailed) as exc_info:
+            await client.extract_receipt(JPEG)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.retryable is False
+
+
+@respx.mock
+async def test_a_non_object_payload_is_an_error(settings):
+    respx.post(settings.fa_receipt_url).mock(return_value=httpx.Response(200, json=["not", "it"]))
+
+    async with FastAccountingClient(settings) as client:
+        with pytest.raises(ReceiptFailed, match="Unexpected response shape"):
+            await client.extract_receipt(JPEG)
+
+
+@respx.mock
+async def test_a_non_numeric_error_code_is_stored_as_none(settings):
+    respx.post(settings.fa_receipt_url).mock(
+        return_value=httpx.Response(
+            400,
+            json={"result": "FAILED", "data": {"error_code": "oops", "error_message": "nope"}},
+        )
+    )
+
+    async with FastAccountingClient(settings) as client:
+        with pytest.raises(ReceiptFailed) as exc_info:
+            await client.extract_receipt(JPEG)
+
+    assert exc_info.value.error_code is None
+    assert exc_info.value.message == "nope"
+
+
+@respx.mock
+async def test_a_failed_body_without_a_message_still_says_something(settings):
+    respx.post(settings.fa_receipt_url).mock(
+        return_value=httpx.Response(400, json={"result": "FAILED"})
+    )
+
+    async with FastAccountingClient(settings) as client:
+        with pytest.raises(ReceiptFailed) as exc_info:
+            await client.extract_receipt(JPEG)
+
+    assert exc_info.value.message == "Request failed."
+    assert exc_info.value.error_code is None
+
+
+@respx.mock
+async def test_an_undecodable_image_fails_the_conversion(settings):
+    respx.post(settings.fa_convert_url).mock(
+        return_value=httpx.Response(
+            200,
+            json={"result": "SUCCESS", "data": {"lid": "l", "image": ["!!! not base64 !!!"]}},
+        )
+    )
+
+    async with FastAccountingClient(settings) as client:
+        with pytest.raises(ConvertFailed, match="undecodable"):
+            await client.convert_to_jpg(b"%PDF-1.4 ...")
+
+
+async def test_a_supplied_http_client_is_left_open(settings):
+    """The caller owns a client it passed in; closing it would break its other users."""
+    http = httpx.AsyncClient()
+    try:
+        async with FastAccountingClient(settings, http=http):
+            pass
+        assert not http.is_closed
+    finally:
+        await http.aclose()

@@ -95,12 +95,24 @@ uploaded afresh.
 
 Nothing sweeps expired images off disk yet; see `DESIGN_NOTES.md`.
 
+## Configuration
+
+| File | Committed | Holds |
+| --- | --- | --- |
+| `config/<APP_ENV>.env` | yes | every non-secret setting — TTL, worker tuning, API base URL, thresholds |
+| `.env` | no | secrets only — `DATABASE_URL`, `FA_API_TOKEN` — plus `APP_ENV` |
+
+Loaded in that order, then real environment variables; each overrides the one before.
+`APP_ENV` defaults to `dev`, and `config/dev.env` is the only environment defined so far.
+The settings class in `app/core/config.py` carries **no default values**, so a setting is
+changed in exactly one file; an unknown `APP_ENV` fails at startup naming the missing file.
+
 ## Running locally
 
 Needs PostgreSQL 14+ and Python 3.11+.
 
 ```bash
-cp .env.example .env      # then fill in FA_API_TOKEN
+cp .env.example .env      # secrets only: fill in FA_API_TOKEN
 ```
 
 Create the database the `DATABASE_URL` in `.env` points at, then:
@@ -112,7 +124,8 @@ uvicorn app.main:app --reload
 ```
 
 The UI is at `/`, Swagger at `/docs`. The background worker starts with the application;
-set `WORKER_ENABLED=false` for an API-only process.
+set `WORKER_ENABLED=false` (in `config/dev.env`, or as an environment variable) for an
+API-only process.
 
 `docker compose up --build` runs the same thing with a database, for anyone who prefers it.
 
